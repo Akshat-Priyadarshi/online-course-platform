@@ -17,8 +17,12 @@
                 <span class="navbar-text me-3">Welcome, {{ user.username }} ({{ user.profile.role }})</span>
                 {% if user.profile.role == 'Student' %}
                 <a class="nav-link" href="{% url 'course_list' %}">Search Courses</a>
+                {% elif user.profile.role == 'Admin' %}
+                <a class="nav-link" href="/admin/">Database Admin</a>
                 {% elif user.profile.role == 'Instructor' %}
-                <a class="nav-link" href="#">Add Content</a>
+                <a class="nav-link" href="{% url 'add_content' %}">Add Content</a>
+                {% elif user.profile.role == 'Analyst' %}
+                <a class="nav-link" href="{% url 'analyst_stats' %}">View Statistics</a>
                 {% endif %}
                 <form action="{% url 'logout' %}" method="post" style="display:inline;">
                     {% csrf_token %}

@@ -5,10 +5,11 @@ from django.shortcuts import render, redirect
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.db import connection
-from django.db.models import Max
+from django.db.models import Max, Count, Avg
 from .forms import AddContentForm
-from .models import Course, OnlineContent, CourseContent
+from .models import Course, OnlineContent, CourseContent, Enrollment, Evaluation
 import datetime
+import json
 
 @login_required
 def dashboard_redirect(request):
@@ -122,3 +123,33 @@ def add_content(request):
         form = AddContentForm()
 
     return render(request, 'instructor/add_content.html', {'form': form})
+
+@login_required
+def analyst_dashboard(request):
+    # Security: Ensure only Analysts can access
+    if request.user.profile.role != 'Analyst':
+        messages.error(request, "Access Denied: Data Analyst privileges required.")
+        return redirect('dashboard')
+
+    # Enrollment count per course
+    enrollment_qs = Course.objects.annotate(
+        student_count=Count('enrollment')
+    )
+
+    # Average marks per course
+    performance_qs = Course.objects.annotate(
+        avg_marks=Avg('evaluation__marks')
+    )
+
+    labels = [c.course_name for c in enrollment_qs]
+    counts = [c.student_count for c in enrollment_qs]
+    scores = [
+        float(c.avg_marks) if c.avg_marks is not None else 0
+        for c in performance_qs
+    ]
+
+    return render(request, 'dashboards/analyst.html', {
+        'labels': labels,   # ✅ Python list
+        'counts': counts,   # ✅ Python list
+        'scores': scores    # ✅ Python list
+    })

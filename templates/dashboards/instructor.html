@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Instructor Dashboard</h2>
+
+<p class="text-muted">
+    Welcome, {{ user.username }} 👋
+</p>
+
+<div class="mt-4">
+    <a href="{% url 'add_content' %}" class="btn btn-primary">
+        ➕ Add New Course Content
+    </a>
+</div>
+{% endblock %}

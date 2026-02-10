@@ -19,8 +19,13 @@ from django.contrib import admin
 from django.urls import path
 from django.contrib.auth import views as auth_views
 from core import views
+from django.views.generic.base import RedirectView
+
 
 urlpatterns = [
+    # This line sends the root URL directly to the login page
+    path('', RedirectView.as_view(url='login/', permanent=False)),
+
     path('admin/', admin.site.urls),
 
     # Authentication
@@ -34,4 +39,7 @@ urlpatterns = [
 
     # Instructor Module
     path('instructor/add-content/', views.add_content, name='add_content'),
+
+    # Analyst
+    path('analyst/statistics/', views.analyst_dashboard, name='analyst_stats'),
 ]
