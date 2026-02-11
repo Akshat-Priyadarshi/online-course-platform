@@ -1,48 +1,74 @@
-# from django.shortcuts import render
-
-# Create your views here.
 from django.shortcuts import render, redirect
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.db import connection
 from django.db.models import Max, Count, Avg
-from .forms import AddContentForm
-from .models import Course, OnlineContent, CourseContent, Enrollment, Evaluation
+# IMPORTS UPDATED HERE:
+from .forms import AddContentForm, AssignInstructorForm, SignupForm
+from .models import (
+    Course, OnlineContent, CourseContent, Enrollment, 
+    Evaluation, CourseInstructor, Instructor, Profile
+)
 import datetime
 import json
 
+# --- NEW: Signup View ---
+def signup_view(request):
+    if request.method == 'POST':
+        form = SignupForm(request.POST)
+        if form.is_valid():
+            user = form.save()
+            role = form.cleaned_data['role']
+
+            # Create the Profile (This triggers your Signals in models.py to auto-create Student/Instructor rows)
+            Profile.objects.create(user=user, role=role)
+
+            messages.success(request, "Account created successfully! Please login.")
+            return redirect('login')
+    else:
+        form = SignupForm()
+
+    return render(request, 'signup.html', {'form': form})
+
+# --- YOUR EXISTING VIEWS BELOW (No changes needed) ---
+
 @login_required
 def dashboard_redirect(request):
-    role = request.user.profile.role
+    # Your existing logic...
+    try:
+        role = request.user.profile.role
+    except:
+        return redirect('login') # Safety catch
+
     if role == 'Admin':
         return render(request, 'dashboards/admin.html')
     elif role == 'Instructor':
-        return render(request, 'dashboards/instructor.html')
+        inst_id = request.user.profile.instructor_id
+        has_assigned_courses = False
+        if inst_id:
+            has_assigned_courses = CourseInstructor.objects.filter(instructor_id=inst_id).exists()
+        context = {'has_assigned_courses': has_assigned_courses}
+        return render(request, 'dashboards/instructor.html', context)
     elif role == 'Student':
         return render(request, 'dashboards/student.html')
     elif role == 'Analyst':
         return render(request, 'dashboards/analyst.html')
     return redirect('login')
 
-
 @login_required
 def course_list(request):
-    # 1. Get the search query from the URL (e.g., ?q=Python)
+    # Your existing logic...
     query = request.GET.get('q')
-    
     if query:
-        # Case-insensitive containment search
         courses = Course.objects.filter(course_name__icontains=query)
     else:
-        # If no search, show all courses
         courses = Course.objects.all()
-    
     return render(request, 'student/course_list.html', {'courses': courses})
 
 @login_required
 def register_course(request, course_id):
+    # Your existing logic...
     if request.method == 'POST':
-        # 1. Get the logged-in student's ID from the Profile we created in Phase 2
         try:
             student_id = request.user.profile.student_id
             if not student_id:
@@ -52,104 +78,102 @@ def register_course(request, course_id):
             messages.error(request, "Profile error. Please contact Admin.")
             return redirect('course_list')
 
-        # 2. Use Raw SQL to check if already enrolled
         with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT * FROM Enrollment WHERE student_id = %s AND course_id = %s",
-                [student_id, course_id]
-            )
+            cursor.execute("SELECT * FROM Enrollment WHERE student_id = %s AND course_id = %s", [student_id, course_id])
             row = cursor.fetchone()
-
             if row:
                 messages.warning(request, "You are already enrolled in this course!")
             else:
-                # 3. Use Raw SQL to Insert (Avoids Django Composite Key issues)
                 current_date = datetime.date.today()
                 cursor.execute(
                     "INSERT INTO Enrollment (student_id, course_id, enrollment_date, status) VALUES (%s, %s, %s, %s)",
                     [student_id, course_id, current_date, 'Enrolled']
                 )
                 messages.success(request, f"Successfully registered for Course ID {course_id}!")
-
     return redirect('course_list')
-
 
 @login_required
 def add_content(request):
-    # Security: Ensure only Instructors can access this feature [cite: 12, 17]
+    # Your existing logic...
     if request.user.profile.role != 'Instructor':
         messages.error(request, "Access Denied: Instructor privileges required.")
         return redirect('dashboard')
 
+    inst_id = request.user.profile.instructor_id
+    has_assigned_courses = CourseInstructor.objects.filter(instructor_id=inst_id).exists()
+
     if request.method == 'POST':
-        form = AddContentForm(request.POST)
+        form = AddContentForm(request.POST, instructor_id=inst_id)
         if form.is_valid():
             try:
-                # 1. Manually calculate the next content_id (Max ID + 1)
                 max_id = OnlineContent.objects.aggregate(Max('content_id'))['content_id__max']
                 new_id = 1 if max_id is None else max_id + 1
                 
-                # 2. Save the OnlineContent object
                 content = form.save(commit=False)
                 content.content_id = new_id
                 content.save()
                 
-                # 3. Create the mapping in the Course_Content junction table
                 selected_course = form.cleaned_data['course']
-                # CourseContent.objects.create(
-                #     course=selected_course, 
-                #     content=content
-                # )
                 with connection.cursor() as cursor:
                     cursor.execute(
-                        """
-                        INSERT INTO Course_Content (course_id, content_id)
-                        VALUES (%s, %s)
-                        """,
+                        "INSERT INTO Course_Content (course_id, content_id) VALUES (%s, %s)",
                         [selected_course.course_id, content.content_id]
                     )
-                
-                messages.success(request, f"Successfully added '{content.title}' to {selected_course.course_name}!")
+                messages.success(request, f"Added '{content.title}' to {selected_course.course_name}!")
                 return redirect('dashboard')
             except Exception as e:
                 messages.error(request, f"Database Error: {str(e)}")
-
-        else:
-            messages.error(
-                request,
-                "Invalid form input. Please check all fields."
-            )
     else:
-        form = AddContentForm()
+        form = AddContentForm(instructor_id=inst_id)
 
-    return render(request, 'instructor/add_content.html', {'form': form})
+    return render(request, 'instructor/add_content.html', {
+        'form': form,
+        'has_assigned_courses': has_assigned_courses
+    })
 
 @login_required
 def analyst_dashboard(request):
-    # Security: Ensure only Analysts can access
+    # Your existing logic...
     if request.user.profile.role != 'Analyst':
         messages.error(request, "Access Denied: Data Analyst privileges required.")
         return redirect('dashboard')
 
-    # Enrollment count per course
-    enrollment_qs = Course.objects.annotate(
-        student_count=Count('enrollment')
-    )
-
-    # Average marks per course
-    performance_qs = Course.objects.annotate(
-        avg_marks=Avg('evaluation__marks')
-    )
+    enrollment_qs = Course.objects.annotate(student_count=Count('enrollment'))
+    performance_qs = Course.objects.annotate(avg_marks=Avg('evaluation__marks'))
 
     labels = [c.course_name for c in enrollment_qs]
     counts = [c.student_count for c in enrollment_qs]
-    scores = [
-        float(c.avg_marks) if c.avg_marks is not None else 0
-        for c in performance_qs
-    ]
+    scores = [float(c.avg_marks) if c.avg_marks is not None else 0 for c in performance_qs]
 
     return render(request, 'dashboards/analyst.html', {
-        'labels': labels,   # ✅ Python list
-        'counts': counts,   # ✅ Python list
-        'scores': scores    # ✅ Python list
+        'labels': labels, 
+        'counts': counts, 
+        'scores': scores
     })
+
+@login_required
+def assign_instructor(request):
+    # Your existing logic...
+    if request.user.profile.role != 'Admin':
+        messages.error(request, "Access Denied: System Admin privileges required.")
+        return redirect('dashboard')
+
+    if request.method == 'POST':
+        form = AssignInstructorForm(request.POST)
+        if form.is_valid():
+            course = form.cleaned_data['course']
+            instructor = form.cleaned_data['instructor']
+            try:
+                with connection.cursor() as cursor:
+                    cursor.execute("SELECT * FROM Course_Instructor WHERE course_id = %s AND instructor_id = %s", [course.course_id, instructor.instructor_id])
+                    if cursor.fetchone():
+                        messages.warning(request, f"{instructor.instructor_name} is already assigned to {course.course_name}.")
+                    else:
+                        cursor.execute("INSERT INTO Course_Instructor (course_id, instructor_id) VALUES (%s, %s)", [course.course_id, instructor.instructor_id])
+                        messages.success(request, f"Successfully assigned {instructor.instructor_name} to {course.course_name}!")
+                        return redirect('dashboard')
+            except Exception as e:
+                messages.error(request, f"Database Error: {str(e)}")
+    else:
+        form = AssignInstructorForm()
+    return render(request, 'admin/assign_instructor.html', {'form': form})

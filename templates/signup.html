@@ -2,10 +2,10 @@
 
 {% block content %}
 <div class="row justify-content-center">
-    <div class="col-md-5">
+    <div class="col-md-6">
         <div class="card shadow-lg border-0">
-            <div class="card-header bg-dark text-white text-center py-3">
-                <h4 class="mb-0">Login to KGP Platform</h4>
+            <div class="card-header bg-primary text-white text-center py-3">
+                <h4 class="mb-0">Create Your Account</h4>
             </div>
             <div class="card-body p-4">
                 <form method="post">
@@ -16,20 +16,20 @@
                         <label class="form-label fw-bold">{{ field.label }}</label>
                         {{ field }}
                         {% if field.errors %}
-                        <div class="text-danger small">
+                        <div class="text-danger small mt-1">
                             {{ field.errors }}
                         </div>
+                        {% endif %}
+                        {% if field.help_text %}
+                        <div class="form-text text-muted">{{ field.help_text }}</div>
                         {% endif %}
                     </div>
                     {% endfor %}
 
                     <div class="d-grid gap-2 mt-4">
-                        <button type="submit" class="btn btn-primary btn-lg">
-                            Login
-                        </button>
-
-                        <a href="{% url 'signup' %}" class="btn btn-outline-secondary">
-                            Create New Account
+                        <button type="submit" class="btn btn-primary btn-lg">Sign Up</button>
+                        <a href="{% url 'login' %}" class="btn btn-link text-decoration-none">
+                            Already have an account? Login here
                         </a>
                     </div>
                 </form>
